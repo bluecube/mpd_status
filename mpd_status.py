@@ -3,16 +3,16 @@
 import mpd
 import select
 import xmpp
-from xmpp import simplexml
-from pprint import pprint
 
 import configuration
 
 TAGS = {'artist': 'artist', 'title': 'title', 'album': 'source'}
 
 def publish(song):
-    global msg_counter
-
+    """
+    Build the xml element and send it.
+    http://xmpp.org/extensions/xep-0118.html
+    """
     iq = xmpp.protocol.Iq(frm=jid, typ='set')
     pubsub = iq.addChild('pubsub', namespace = 'http://jabber.org/protocol/pubsub')
     publish = pubsub.addChild('publish', {'node': 'http://jabber.org/protocol/tune'})
@@ -25,11 +25,17 @@ def publish(song):
     jabber.send(iq)
     #print(str(iq))
 
-def publish_song(song):
+def song_changed(song):
+    """
+    Handle change of active song.
+    """
     print("Changed to: {} - {}". format(song['artist'], song['title']))
     publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
 
 def not_playing():
+    """
+    Disable tune publishing.
+    """
     print("Not playing")
     publish({})
 
@@ -51,8 +57,6 @@ jabber.sendInitPresence(requestRoster = 0)
 
 print("Running")
 
-msg_counter = 0
-
 try:
     lastsong = None
     while True:
@@ -63,7 +67,7 @@ try:
             currentsong = music.currentsong()
             if currentsong != lastsong:
                 lastsong = currentsong
-                publish_song(currentsong)
+                song_changed(currentsong)
         
         music.send_idle()
         select.select([music], [], [])
