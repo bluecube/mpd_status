@@ -10,12 +10,25 @@ TAGS = {'artist': 'artist', 'title': 'title', 'album': 'source'}
 NOTPLAYING = {}
 NS_TUNE = 'http://jabber.org/protocol/tune'
 
+def invisibility():
+    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
+    query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
+    list_ = query.addChild('list', {'name': 'invisible'})
+    item = list_.addChild('item', {'action': 'deny', 'order': 1})
+    presence_out = item.addChild('presence-out')
+    jabber.send(iq)
+
+    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
+    query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
+    active = query.addChild('active', {'name': 'invisible'})
+    jabber.send(iq)
+
 def publish(song):
     """
     Build the xml element and send it.
     http://xmpp.org/extensions/xep-0118.html
     """
-    iq = xmpp.protocol.Iq(frm=jid, typ='set')
+    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
     pubsub = iq.addChild('pubsub', namespace = xmpp.protocol.NS_PUBSUB)
     publish = pubsub.addChild('publish', {'node': NS_TUNE})
     item = publish.addChild('item')
@@ -57,7 +70,10 @@ jid = xmpp.protocol.JID(configuration.XMPP_JID)
 jabber = xmpp.client.Client(jid.getDomain(), debug=[])
 jabber.connect()
 jabber.auth(jid.getNode(), configuration.XMPP_PASSWORD, jid.getResource())
-jabber.sendInitPresence(requestRoster = 0)
+
+invisibility()
+
+jabber.send(xmpp.protocol.Presence(priority = -128))
 
 print("Running")
 
