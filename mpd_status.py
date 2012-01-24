@@ -8,6 +8,7 @@ import configuration
 
 TAGS = {'artist': 'artist', 'title': 'title', 'album': 'source'}
 NOTPLAYING = {}
+NS_TUNE = 'http://jabber.org/protocol/tune'
 
 def publish(song):
     """
@@ -15,10 +16,10 @@ def publish(song):
     http://xmpp.org/extensions/xep-0118.html
     """
     iq = xmpp.protocol.Iq(frm=jid, typ='set')
-    pubsub = iq.addChild('pubsub', namespace = 'http://jabber.org/protocol/pubsub')
-    publish = pubsub.addChild('publish', {'node': 'http://jabber.org/protocol/tune'})
+    pubsub = iq.addChild('pubsub', namespace = xmpp.protocol.NS_PUBSUB)
+    publish = pubsub.addChild('publish', {'node': NS_TUNE})
     item = publish.addChild('item')
-    tune = item.addChild('tune', namespace = 'http://jabber.org/protocol/tune')
+    tune = item.addChild('tune', namespace = NS_TUNE)
 
     for tag, value in song.items():
         tune.addChild(tag).setData(value)
