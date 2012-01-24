@@ -29,7 +29,7 @@ def song_changed(song):
     """
     Handle change of active song.
     """
-    print("Changed to: {} - {}". format(song['artist'], song['title']))
+    print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
     publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
 
 def not_playing():
