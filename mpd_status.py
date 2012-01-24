@@ -7,6 +7,7 @@ import xmpp
 import configuration
 
 TAGS = {'artist': 'artist', 'title': 'title', 'album': 'source'}
+NOTPLAYING = {}
 
 def publish(song):
     """
@@ -29,15 +30,17 @@ def song_changed(song):
     """
     Handle change of active song.
     """
-    print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
+    if song == NOTPLAYING:
+        print("Not playing")
+    else:
+        print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
     publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
 
 def not_playing():
     """
     Disable tune publishing.
     """
-    print("Not playing")
-    publish({})
+    song_changed(NOTPLAYING)
 
 
 print("Opening mpd connection")
@@ -58,16 +61,16 @@ jabber.sendInitPresence(requestRoster = 0)
 print("Running")
 
 try:
-    lastsong = None
+    lastsong = {}
     while True:
         if music.status()['state'] != 'play':
-            not_playing()
-            lastsong = None
+            currentsong = NOTPLAYING
         else:
             currentsong = music.currentsong()
-            if currentsong != lastsong:
-                lastsong = currentsong
-                song_changed(currentsong)
+
+        if currentsong != lastsong:
+            lastsong = currentsong
+            song_changed(currentsong)
         
         music.send_idle()
         select.select([music], [], [])
