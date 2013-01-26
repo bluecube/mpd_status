@@ -8,95 +8,121 @@ import configuration
 
 TAGS = {'artist': 'artist', 'title': 'title', 'album': 'source'}
 NOTPLAYING = {}
-NS_TUNE = 'http://jabber.org/protocol/tune'
 
-def invisibility():
-    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
-    query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
-    list_ = query.addChild('list', {'name': 'invisible'})
-    item = list_.addChild('item', {'action': 'deny', 'order': 1})
-    presence_out = item.addChild('presence-out')
-    jabber.send(iq)
+class MpdConnection:
+    def __init__(self, host, port, password):
+        self._host = host
+        self._port = port
+        self._password = password
 
-    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
-    query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
-    active = query.addChild('active', {'name': 'invisible'})
-    jabber.send(iq)
+    def __enter__(self):
+        print("Opening mpd connection")
 
-def publish(song):
-    """
-    Build the xml element and send it.
-    http://xmpp.org/extensions/xep-0118.html
-    """
-    iq = xmpp.protocol.Iq(frm = jid, typ = 'set')
-    pubsub = iq.addChild('pubsub', namespace = xmpp.protocol.NS_PUBSUB)
-    publish = pubsub.addChild('publish', {'node': NS_TUNE})
-    item = publish.addChild('item')
-    tune = item.addChild('tune', namespace = NS_TUNE)
+        self._conn = mpd.MPDClient()
+        self._conn.connect(host = self._host, port = self._port)
+        if self._password is not None:
+            self._conn.password(self._password)
 
-    for tag, value in song.items():
-        tune.addChild(tag).setData(value)
+        return self
 
-    jabber.send(iq)
-    #print(str(iq))
+    def __exit__(self, *args):
+        print("Closing mpd connection")
+        self._conn.disconnect()
 
-def song_changed(song):
-    """
-    Handle change of active song.
-    """
-    if song == NOTPLAYING:
-        print("Not playing")
-    else:
-        print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
-    publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
+    def state(self):
+        return self._conn.status()['state']
 
-def not_playing():
-    """
-    Disable tune publishing.
-    """
-    song_changed(NOTPLAYING)
+    def currentsong(self):
+        return self._conn.currentsong()
 
+    def idle(self):
+        self._conn.send_idle()
+        select.select([self._conn], [], [])
+        self._conn.fetch_idle()
 
-print("Opening mpd connection")
+class XmppTune:
+    NS_TUNE = 'http://jabber.org/protocol/tune'
 
-music = mpd.MPDClient()
-music.connect(host = configuration.MPD_HOST, port = configuration.MPD_PORT)
-if configuration.MPD_PASSWORD is not None:
-    music.password(configuration.MPD_PASSWORD)
+    def __init__(self, jid, password):
+        self._jid = xmpp.protocol.JID(jid)
+        self._password = password
 
-print("Opening xmpp connection")
+    def __enter__(self):
+        print("Opening xmpp connection")
 
-jid = xmpp.protocol.JID(configuration.XMPP_JID)
-jabber = xmpp.client.Client(jid.getDomain(), debug=[])
-jabber.connect()
-jabber.auth(jid.getNode(), configuration.XMPP_PASSWORD, jid.getResource())
+        self._conn = xmpp.client.Client(self._jid.getDomain(), debug=[])
+        self._conn.connect()
+        self._conn.auth(self._jid.getNode(), self._password, self._jid.getResource())
 
-invisibility()
+        self._invisibility()
 
-jabber.send(xmpp.protocol.Presence(priority = -128))
+        self._conn.send(xmpp.protocol.Presence(priority = -128))
 
-print("Running")
+        return self
+
+    def __exit__(self, *args):
+        print("closing XMPP connection")
+        self._publish({})
+        self._conn.disconnect()
+
+    def _invisibility(self):
+        iq = xmpp.protocol.Iq(frm = self._jid, typ = 'set')
+        query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
+        list_ = query.addChild('list', {'name': 'invisible'})
+        item = list_.addChild('item', {'action': 'deny', 'order': 1})
+        presence_out = item.addChild('presence-out')
+        self._conn.send(iq)
+
+        iq = xmpp.protocol.Iq(frm = self._jid, typ = 'set')
+        query = iq.addChild('query', namespace = xmpp.protocol.NS_PRIVACY)
+        active = query.addChild('active', {'name': 'invisible'})
+        self._conn.send(iq)
+
+    def _publish(self, song):
+        """
+        Build the xml element and send it.
+        http://xmpp.org/extensions/xep-0118.html
+        """
+        iq = xmpp.protocol.Iq(frm = self._jid, typ = 'set')
+        pubsub = iq.addChild('pubsub', namespace = xmpp.protocol.NS_PUBSUB)
+        publish = pubsub.addChild('publish', {'node': self.NS_TUNE})
+        item = publish.addChild('item')
+        tune = item.addChild('tune', namespace = self.NS_TUNE)
+
+        for tag, value in song.items():
+            tune.addChild(tag).setData(value)
+
+        self._conn.send(iq)
+        #print(str(iq))
+
+    def song_changed(self, song):
+        """
+        Handle change of active song.
+        """
+        if song == NOTPLAYING:
+            print("Not playing")
+        else:
+            print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
+        self._publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
 
 try:
-    lastsong = {}
-    while True:
-        if music.status()['state'] != 'play':
-            currentsong = NOTPLAYING
-        else:
-            currentsong = music.currentsong()
+    lastsong = None
+    with MpdConnection(configuration.MPD_HOST, configuration.MPD_PORT,
+                       configuration.MPD_PASSWORD) as mpd_conn:
+        with XmppTune(configuration.XMPP_JID,
+                      configuration.XMPP_PASSWORD) as xmpp_conn:
 
-        if currentsong != lastsong:
-            lastsong = currentsong
-            song_changed(currentsong)
-        
-        music.send_idle()
-        select.select([music], [], [])
-        music.fetch_idle()
+            while True:
+                if mpd_conn.state() != 'play':
+                    currentsong = NOTPLAYING
+                else:
+                    currentsong = mpd_conn.currentsong()
+
+                if currentsong != lastsong:
+                    lastsong = currentsong
+                    xmpp_conn.song_changed(currentsong)
+
+                mpd_conn.idle()
 except KeyboardInterrupt:
     print("Interrupted.")
-finally:
-    not_playing()
-
-    music.disconnect()
-    jabber.disconnect()
 
