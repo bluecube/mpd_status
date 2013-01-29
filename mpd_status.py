@@ -3,6 +3,7 @@
 import mpd
 import select
 import xmpp
+import time
 
 import configuration
 
@@ -61,7 +62,7 @@ class XmppTune:
         return self
 
     def __exit__(self, *args):
-        print("closing XMPP connection")
+        print("Closing xmpp connection")
         self._publish({})
         self._conn.disconnect()
 
@@ -105,13 +106,12 @@ class XmppTune:
             print("Changed to: {} - {}". format(song.get('artist', 'Unknown artist'), song.get('title', 'Unknown title')))
         self._publish({TAGS[tag]: value for (tag, value) in song.items() if tag in TAGS})
 
-try:
+def work():
     lastsong = None
     with MpdConnection(configuration.MPD_HOST, configuration.MPD_PORT,
                        configuration.MPD_PASSWORD) as mpd_conn:
         with XmppTune(configuration.XMPP_JID,
                       configuration.XMPP_PASSWORD) as xmpp_conn:
-
             while True:
                 if mpd_conn.state() != 'play':
                     currentsong = NOTPLAYING
@@ -123,6 +123,14 @@ try:
                     xmpp_conn.song_changed(currentsong)
 
                 mpd_conn.idle()
+
+try:
+    while True:
+        try:
+            work()
+        except IOError:
+            print("Waiting {} seconds for retry".format(configuration.RETRY_TIME))
+            time.sleep(configuration.RETRY_TIME)
 except KeyboardInterrupt:
     print("Interrupted.")
 
