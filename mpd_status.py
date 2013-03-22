@@ -128,7 +128,7 @@ try:
     while True:
         try:
             work()
-        except IOError:
+        except (IOError, mpd.ConnectionError):
             print("Waiting {} seconds for retry".format(configuration.RETRY_TIME))
             time.sleep(configuration.RETRY_TIME)
 except KeyboardInterrupt:
